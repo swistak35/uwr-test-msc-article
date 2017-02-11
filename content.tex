@@ -41,4 +41,14 @@ Jest to aktualnie najpopularniejsza metoda skalowania bazy danych MySQL. Wystarc
 
 \section{Wybór klucza shardującego}
 
+Jeśli uznamy że potrzebujemy shardingu, jedną z pierwszych decyzji do podjęcia jest wybór klucza shardującego. Klucz ten decyduje, na jakim shardzie wyląduje rekord. W MySQL NDB Cluster, który jest gotowym rozwiązaniem do wdrażania shardowanej bazy danych, rekordy są równomiernie rozprowadzane po serwerach wg haszowanego klucza głównego w danej tabeli. To proste rozwiązanie, ale z nienajlepszą wydajnością. Wyobraźmy sobie platformę blogową, gdzie użytkownicy mają posty i piszą komentarze pod postami innych autorów. Żeby wyświetlić stronę główną takiego bloga, musimy pobrać wszystkie posty danego użytkownika. Skoro posty są rozłożone równomiernie na wszystkich serwerach, to musimy zrobić (najlepiej równolegle) zapytania do wszystkich serwerów i potem połączyć te dane (dodatkowe utrudnienia: co jeśli zapytanie miało klauzulę ORDER BY, LIMIT, HAVING - to wszystko musi być wtedy obsłużone w abstrakcji programistycznej po stronie klienta). Jest to zrobienia, ale widać, że może da się tutaj zrobić coś lepiej. Dlatego najczęściej dobrym kluczem jest identyfikator użytkownika (jeśli pomyślimy np. o witrynie społecznościowej) lub identyfikator klienta (częste w aplikacjach modelu SaaS, gdzie jest zakładane konto dla całej firmy i wiele kont użytkownika podlega pod tą firmę).
+
+Mamy tutaj jeszcze inny problem. Załóżmy że mamy dwa widoki:
+1) wyświetlenie posta ze wszystkimi komentarzami pod spodem
+2) wyświetlenie profilu użytkownika, ze wszystkimi jego komentarzami
+Jak w takim wypadku rozprowadzać komentarze po serwerach? Możemy to zrobić wg identyfikatora użytkownika lub identyfikatora posta, ale wtedy zawsze jeden z powyższych widoków będzie wymagał zapytań do wszystkich serwerów. Częstym rozwiązaniem tutaj jest denormalizacja i duplikacja danych. Oczywiście, trzymanie zduplikowanych danych to jest pewien koszt, ale może w naszym przypadku wydajność jest ważniejsza. Można też się zastanowić czy na pewno wszystkie dane o komentarzach są potrzebne w obu zastosowaniach - może w przypadku profilu użytkownika chcemy wyświetlić jedynie nagłówki komentarzy?
+
+
+
+
 \end{document}
