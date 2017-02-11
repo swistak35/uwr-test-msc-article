@@ -48,7 +48,35 @@ Mamy tutaj jeszcze inny problem. Załóżmy że mamy dwa widoki:
 2) wyświetlenie profilu użytkownika, ze wszystkimi jego komentarzami
 Jak w takim wypadku rozprowadzać komentarze po serwerach? Możemy to zrobić wg identyfikatora użytkownika lub identyfikatora posta, ale wtedy zawsze jeden z powyższych widoków będzie wymagał zapytań do wszystkich serwerów. Częstym rozwiązaniem tutaj jest denormalizacja i duplikacja danych. Oczywiście, trzymanie zduplikowanych danych to jest pewien koszt, ale może w naszym przypadku wydajność jest ważniejsza. Można też się zastanowić czy na pewno wszystkie dane o komentarzach są potrzebne w obu zastosowaniach - może w przypadku profilu użytkownika chcemy wyświetlić jedynie nagłówki komentarzy?
 
+\section{Zapytania do wielu shardów}
 
+Niezależnie od zastosowanych technik, nie uda się nam wybrać klucza który by idealnie podzielił dane tak, że wszystkie zapytania odwoływałyby się tylko do jednego sharda. Na naszej platformie blogowej, możemy chcieć mieć np. listę najpopularniejszych postów, więc siłą rzeczy musielibyśmy wysłać zapytania do wszystkich shardów. Jest kilka technik do radzenia sobie z takimi zapytaniami:
+* warstwa cache dla ciężkich zapytań
+* tabele, które przetrzymują wyniki trudniejszych zapytań - dane o najpopularniejszych postach możemy na bieżąco przetwarzać w tle i wrzucać je do tabeli z wynikami. Taką tabelę z wynikami możemy wtedy albo zduplikować na wszystkich shardach, albo wrzucić w oddzielną bazę danych.
 
+Nie tylko zapytania są trudne do zrealizowania w shardowanych bazach danych - jeśli mamy shardy, to tracimy też klucze obce (pomiędzy shardami) i transakcyjność (zależnie od rozwiązania, są sposoby aby transakcyjność odzyskać).
+
+Poza odczytem danych, trudniejsze też może być ich usunięcie - jeśli chcemy usunąć użytkownika, to zamiast robić żądania do wszystkich shardów wykonujące usuwanie danych, możemy tylko dodać użytkownika do usunięcia, a samym usuwaniem danych zajmie się jakiś proces działający w tle.
+
+\section{Przydzielanie shardów do serwerów}
+
+Niekoniecznie musi być tak, że na jednym serwerze jest tylko jeden shard z danymi - wprost przeciwnie, zaraz wytłumaczę dlaczego lepszym pomysłem jest posiadanie wielu małych shardów na kazdym serwerze i jakie są zalety i wady obu rozwiązań.
+
+Wyobraźmy sobie że mamy na serwerze 100GB danych - możemy je podzielić na 1 shard 100 GBajtowy lub 100 shardów wielkości 1GB. Pierwszą sprawą którą można wziąć pod uwagę, to zmiany struktury tabel. W MySQL, wiele z operacji zmian struktury blokuje całą tabelę (takie jak np. zmiana długości pola VARCHAR, dodawanie niektórych indexów, dodawanie kolumn w wersji <= 5.5 itd.). Lepiej jest więc aby proces zmiany struktury był robiony po kolei i blokował każdy mały shard na kilka minut, niż żeby jeden duży shard został zablokowany na godzinę. Mniejsze shardy są też łatwe do przenoszenia, bo operacja przeniesienia jednego shardu na drugi jest znacznie prostsza niż operacja rozdzielenia sharda na kilka części.
+
+Są tylko dwie wady małych shardów: po pierwsze, prawdopodobnie rośnie liczba zapytań pomiędzy różnymi shardami (z którymi nauczyliśmy się sobie radzić w poprzedniej sekcji). Drugą wadą jest to, że jeśli mamy aktualnie działającą aplikację i przynoszący pieniądze biznes, operacja rozdzielenia bazy na dwie części (i dodanie infrastruktury do tego) może być znacznie prostsze niż rozdzielenie bazy na 1000 części. W pierwszym przypadku możemy sobie pewnie jeszcze pozwolić na robienie czegoś ręcznie, ale dwa razy, w drugim już musimy zautomatyzować wszystkie operacje działające na bazie danych.
+
+\section{Implementacja shardów na serwerach}
+
+Przechodząc bardziej do technicznych szczegółów - jak reprezentować shard danych na serwerze? Jest kilka najpopularniejszych sposobów:
+* każdy shard jest osobną bazą danych o takiej samej nazwie jak oryginalna
+* każdy shard jest osobną bazą danych o nazwie z sufiksem numerycznym oznaczającym numer sharda (np. bookclub\_23, tabele to bookclub\_23.comments itd.)
+* na jednym serwerze jest tylko jedna baza danych, a tabele mają sufiks numeryczny oznaczający numer sharda (np. bookclub.comments\_23)
+* sufiks z nr sharda jest zarówno w nazwie bazy danych, jak i nazwie tabeli (bookclub\_23.comments\_23)
+* połączenie dowolnego z powyższych, można też wziąć pod uwagę uruchomienie kilku różnych instancji MySQL na danym serwerze obsługującą pewną liczbę shardów, itd.
+
+Wszystkie podane sposoby są łatwe do wprowadzenia w nowej aplikacji, więc tam doradzane jest użycie sufiksu zarówno w tabeli, jak i bazie danych, żeby uniknąć ewentualnych pomyłek i błędów. Jednak jest to też sposób najbardziej inwazyjny dla kodu produkcyjnego. Dodanie numeru sharda tylko do bazy danych jest średnio inwazyjne w kodzie aplikacji - pewnie musimy ten numer gdzieś przekazać przy rozpoczęciu żądania do serwera, ale kod wykonujący zapytania SQL może zostać taki, jaki był przed dodaniem shardingu do aplikacji. Jeśli sufiks jest też w nazwie tabel, to zmian może być znacznie więcej, prawdopodobnie każde zapytanie SQL w systemie będzie musiało być lekko zmodyfikowane.
+
+Podczas rozrzucania shardów po serwerach, warto też wziąć pod uwagę lokalizację użytkownika - jeśli nasza firma jest globalna, użytkowników z Europy można wrzucić do innego DC (zlokalizowanego w Europie) niż użytkowników z Azji.
 
 \end{document}
